@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASTRA | Analiz Laboratuvarı</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --sidebar-bg: #f8f9fa;
+            --border: #e1e4e8;
+            --text-main: #1a1d21;
+            --text-muted: #57606a;
+            --accent: #0969da;
+            --danger: #cf222e;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: 100vh;
+        }
+
+        .sidebar {
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            overflow-y: auto;
+        }
+
+        .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+        .section-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 16px; }
+
+        .input-field { margin-bottom: 16px; }
+        label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+        input {
+            width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+            border-radius: 6px; font-size: 14px; box-sizing: border-box; outline: none;
+        }
+
+        .btn {
+            background-color: var(--accent); color: white; border: none;
+            border-radius: 6px; padding: 12px; font-size: 14px; font-weight: 600;
+            cursor: pointer; width: 100%; transition: 0.2s;
+        }
+        .btn:hover:not(:disabled) { background-color: #0c87ef; }
+        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        .main-content { display: flex; flex-direction: column; background-color: white; position: relative; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); padding: 24px 32px; border-bottom: 1px solid var(--border); gap: 24px; }
+        .stat-item .label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .stat-item .value { font-size: 20px; font-weight: 600; }
+
+        #plot3d { flex: 1; width: 100%; }
+        .phase-badge { position: absolute; bottom: 32px; right: 32px; background: rgba(255,255,255,0.9); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        
+        .error-msg { color: var(--danger); font-size: 11px; margin-top: 4px; display: none; }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">ASTRA SYSTEMS</div>
+        
+        <div>
+            <div class="section-title">Parametreler</div>
+            <div class="input-field">
+                <label>Atış Açısı (0-89°)</label>
+                <input type="number" id="inp-angle" value="45" min="0" max="89" oninput="validate(this, 0, 89)" onkeydown="blockE(event)">
+            </div>
+            <div class="input-field">
+                <label>Hedef Uzaklığı (m)</label>
+                <input type="number" id="inp-target" value="20000" min="100" max="50000" oninput="validate(this, 100, 50000)" onkeydown="blockE(event)">
+            </div>
+            <div class="input-field">
+                <label>Yan Rüzgar (±50 m/s)</label>
+                <input type="number" id="inp-wind" value="10" min="-50" max="50" oninput="validate(this, -50, 50)" onkeydown="blockE(event)">
+            </div>
+            <button class="btn" id="runBtn" onclick="startSolver()">Analizi Başlat</button>
+            <div id="main-error" class="error-msg">Geçersiz giriş!</div>
+        </div>
+
+        <div style="margin-top: auto; font-size: 12px; color: var(--text-muted);">
+            Sistem: ASTRA v4.2 Core<br>
+            Durum: Çevrimiçi Analiz
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="stats-grid">
+            <div class="stat-item"><div class="label">Hedef Sapması (CEP)</div><div class="value" id="val-cep" style="color: var(--accent);">--</div></div>
+            <div class="stat-item"><div class="label">Uçuş Süresi</div><div class="value" id="val-time">--</div></div>
+            <div class="stat-item"><div class="label">Maksimum İrtifa</div><div class="value" id="val-alt">--</div></div>
+            <div class="stat-item"><div class="label">Vuruş Hızı</div><div class="value" id="val-vel">--</div></div>
+        </div>
+        <div id="plot3d"></div>
+        <div class="phase-badge" id="phase-tag">HAZIR</div>
+    </main>
+
+    <script>
+        const G = 9.80665;
+        const RHO_0 = 1.225;
+        let isRunning = false;
+
+        function blockE(e) { if (["e", "E", "+"].includes(e.key)) e.preventDefault(); }
+        function validate(el, min, max) { if (parseFloat(el.value) > max) el.value = max; }
+
+        function getAirDensity(h) {
+            h = Math.max(0, Math.min(h, 11000));
+            return RHO_0 * Math.pow((288.15 - 0.0065 * h) / 288.15, 4.255);
+        }
+
+        function getAcc(pos, vel, windZ, targetX, targetZ, useGuidance) {
+            const vRelX = vel.x;
+            const vRelY = vel.y;
+            const vRelZ = vel.z - windZ;
+            const vMag = Math.sqrt(vRelX*vRelX + vRelY*vRelY + vRelZ*vRelZ);
+            const vCurr = Math.sqrt(vel.x*vel.x + vel.y*vel.y + vel.z*vel.z);
+            
+            let acc = { x: 0, y: -G, z: 0 };
+
+            if (vMag > 0.1) {
+                const rho = getAirDensity(pos.y);
+                const dragMag = 0.5 * rho * vMag * vMag * 0.22 * 0.018;
+                acc.x -= (dragMag * (vRelX / vMag)) / 43.0;
+                acc.y -= (dragMag * (vRelY / vMag)) / 43.0;
+                acc.z -= (dragMag * (vRelZ / vMag)) / 43.0;
+            }
+
+            if (useGuidance && vCurr > 50) {
+                const relX = targetX - pos.x;
+                const relY = 0 - pos.y;
+                const relZ = targetZ - pos.z;
+                const dist = Math.sqrt(relX*relX + relY*relY + relZ*relZ);
+                
+                if (dist > 20) {
+                    const losX = relX/dist, losY = relY/dist, losZ = relZ/dist;
+                    let ax_g = (losX * 3.0 - vel.x/vCurr) * vCurr * 0.4;
+                    let ay_g = (losY * 3.0 - vel.y/vCurr) * vCurr * 0.4;
+                    let az_g = (losZ * 3.0 - vel.z/vCurr) * vCurr * 0.4;
+                    
+                    const gMag = Math.sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
+                    const maxG = 30 * G;
+                    if (gMag > maxG) {
+                        const s = maxG / gMag;
+                        ax_g *= s; ay_g *= s; az_g *= s;
+                    }
+                    acc.x += ax_g; acc.y += ay_g; acc.z += az_g;
+                }
+            }
+            return acc;
+        }
+
+        async function startSolver() {
+            if (isRunning) return;
+            const angleVal = parseFloat(document.getElementById('inp-angle').value);
+            const targetXVal = parseFloat(document.getElementById('inp-target').value);
+            const windZVal = parseFloat(document.getElementById('inp-wind').value);
+
+            if (isNaN(angleVal) || isNaN(targetXVal) || isNaN(windZVal)) return;
+
+            isRunning = true;
+            document.getElementById('runBtn').disabled = true;
+            document.getElementById('phase-tag').innerText = "HESAPLANIYOR...";
+
+            const angle = Math.max(0, Math.min(angleVal, 89)) * Math.PI / 180;
+            const targetX = targetXVal;
+            const windZ = windZVal;
+            const targetZ = 500;
+
+            // 1. Simülasyon: Güdümlü
+            let guided = runRK4(angle, targetX, windZ, targetZ, true);
+            // 2. Simülasyon: Balistik (Güdümsüz)
+            let ballistic = runRK4(angle, targetX, windZ, targetZ, false);
+
+            await animate(guided, ballistic, targetX, targetZ);
+
+            isRunning = false;
+            document.getElementById('runBtn').disabled = false;
+            document.getElementById('phase-tag').innerText = "TAMAMLANDI";
+        }
+
+        function runRK4(angle, tx, wz, tz, guide) {
+            let p = { x: 0, y: 0.1, z: 0 };
+            let v = { x: 850 * Math.cos(angle), y: 850 * Math.sin(angle), z: 0 };
+            let dt = 0.05, t = 0;
+            let path = { x:[], y:[], z:[], maxAlt: 0, finalV: 0, time: 0, cep: 0 };
+
+            while (p.y >= 0 && t < 400) {
+                const k1 = getAcc(p, v, wz, tx, tz, guide);
+                const k2 = getAcc({x: p.x + v.x*dt*0.5, y: p.y + v.y*dt*0.5, z: p.z + v.z*dt*0.5}, {x: v.x + k1.x*dt*0.5, y: v.y + k1.y*dt*0.5, z: v.z + k1.z*dt*0.5}, wz, tx, tz, guide);
+                const k3 = getAcc({x: p.x + v.x*dt*0.5, y: p.y + v.y*dt*0.5, z: p.z + v.z*dt*0.5}, {x: v.x + k2.x*dt*0.5, y: v.y + k2.y*dt*0.5, z: v.z + k2.z*dt*0.5}, wz, tx, tz, guide);
+                const k4 = getAcc({x: p.x + v.x*dt, y: p.y + v.y*dt, z: p.z + v.z*dt}, {x: v.x + k3.x*dt, y: v.y + k3.y*dt, z: v.z + k3.z*dt}, wz, tx, tz, guide);
+
+                v.x += (k1.x + 2*k2.x + 2*k3.x + k4.x) * dt / 6;
+                v.y += (k1.y + 2*k2.y + 2*k3.y + k4.y) * dt / 6;
+                v.z += (k1.z + 2*k2.z + 2*k3.z + k4.z) * dt / 6;
+                p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
+                
+                path.x.push(p.x); path.y.push(p.y); path.z.push(p.z);
+                if (p.y > path.maxAlt) path.maxAlt = p.y;
+                t += dt;
+            }
+            path.finalV = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+            path.time = t;
+            path.cep = Math.sqrt((p.x-tx)**2 + (p.z-tz)**2);
+            return path;
+        }
+
+        async function animate(g, b, tx, tz) {
+            const steps = g.x.length;
+            for(let i=0; i < steps; i += 60) {
+                Plotly.react('plot3d', [
+                    { x: g.x.slice(0, i), y: g.z.slice(0, i), z: g.y.slice(0, i), type: 'scatter3d', mode: 'lines', line: { color: '#0969da', width: 4 }, name: 'Güdümlü Rota' },
+                    { x: b.x.slice(0, i), y: b.z.slice(0, i), z: b.y.slice(0, i), type: 'scatter3d', mode: 'lines', line: { color: '#8899a6', width: 2, dash: 'dash' }, name: 'Balistik (Güdümsüz)' },
+                    { x: [tx], y: [tz], z: [0], type: 'scatter3d', mode: 'markers', marker: { color: 'red', size: 4 }, name: 'Hedef' }
+                ], {
+                    scene: { 
+                        xaxis: { title: 'Menzil', range: [0, Math.max(tx, ...g.x, 5000)] }, 
+                        yaxis: { title: 'Sapma', range: [-1500, 1500] }, 
+                        zaxis: { title: 'İrtifa', range: [0, 12000] },
+                        aspectratio: { x: 2, y: 0.5, z: 0.5 }
+                    },
+                    margin: { l:0, r:0, b:0, t:0 },
+                    legend: { orientation: 'h', y: -0.1, x: 0.5, xanchor: 'center' }
+                });
+                await new Promise(r => setTimeout(r, 1));
+            }
+            document.getElementById('val-cep').innerText = g.cep.toFixed(1) + " m";
+            document.getElementById('val-time').innerText = g.time.toFixed(1) + " s";
+            document.getElementById('val-alt').innerText = Math.round(g.maxAlt) + " m";
+            document.getElementById('val-vel').innerText = Math.round(g.finalV) + " m/s";
+        }
+        
+        Plotly.newPlot('plot3d', [], { scene: { aspectratio: { x: 2, y: 0.5, z: 0.5 } } });
+    </script>
+</body>
+</html>
