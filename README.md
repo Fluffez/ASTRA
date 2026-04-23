@@ -1,27 +1,26 @@
-# ASTRA | İleri Seviye Balistik ve Güdüm Simülasyon Platformu
+# ASTRA | Balistik ve Güdüm Simülasyonu
 
-Bu proje, yüksek hassasiyetli mühimmatların uçuş dinamiklerini modellemek, yörünge analizi yapmak ve aktif güdüm algoritmalarını test etmek amacıyla geliştirilmiş bir mühendislik platformudur. Sistem, çekirdek fizik motoru olarak C++ tabanlı bir mimari kullanırken, analiz ve görselleştirme katmanında modern web teknolojileriyle entegre çalışır.
+Bu proje, mühimmat uçuş dinamiklerinin modellenmesi ve güdüm algoritmalarının test edilmesi için geliştirilmiş bir teknik analiz platformudur.
 
-## Teknik Özellikler
+## Teknik İçerik
 
-- **Sayısal Çözümleyici:** 4. Derece Runge-Kutta (RK4) entegrasyon yöntemi ile yüksek hassasiyetli diferansiyel denklem çözümü.
-- **Atmosfer Modeli:** International Standard Atmosphere (ISA) modeli entegrasyonu (Troposferik irtifaya bağlı değişken hava yoğunluğu ve sıcaklık hesaplamaları).
-- **Aerodinamik Katsayılar:** Mach sayısına bağlı değişken sürükleme katsayısı (Transonik/Süpersonik Drag Spike) modellemesi.
-- **Aktif Güdüm:** Proportional Navigation (PN) güdüm kanunu ile rüzgar ve dış etkenlere karşı gerçek zamanlı rota düzeltme (Closed-loop control).
-- **Gerçek Zamanlı Analiz:** Javascript (Plotly.js) tabanlı 3D telemetri görselleştirme ve mühendislik dashboard'u.
+- **Sayısal Metotlar:** 4. Derece Runge-Kutta (RK4) diferansiyel denklem çözücü.
+- **Atmosferik Modelleme:** International Standard Atmosphere (ISA) verileri ile irtifaya bağlı yoğunluk hesaplaması.
+- **Aerodinamik:** Mach sayısına ve sürtünme katsayısına (Cd) bağlı aerodinamik sürükleme kuvveti modellemesi.
+- **Kontrol ve Güdüm:** Proportional Navigation (PN) kanunu kullanılarak rüzgar sapmalarının kompanse edilmesi.
+- **Görselleştirme:** Plotly.js tabanlı 3D telemetri ve veri görselleştirme dashboard'u.
 
-## Proje Yapısı
+## Dosya Yapısı
 
-- `include/Projectile.hpp`: Fizik motoru ve güdüm algoritmalarının matematiksel implementasyonu.
-- `src/main.cpp`: Simülasyon döngüsü ve telemetri veri toplama katmanı.
-- `index.html`: Çoklu senaryo analizi ve 3D yörünge karşılaştırma arayüzü.
-- `simulate_and_visualize.py`: C++ çıktılarını dashboard katmanına aktaran veri köprüsü.
+- `include/Projectile.hpp`: Fizik motoru ve güdüm algoritması.
+- `src/main.cpp`: Simülasyon döngüsü ve veri toplama.
+- `index.html`: Senaryo analizi ve görselleştirme arayüzü.
+- `simulate_and_visualize.py`: Sistem entegrasyon ve veri köprüsü.
 
-## Kullanım
+## Çalıştırma
 
-Sistem iki şekilde çalıştırılabilir:
-1. **Dinamik Mod:** `index.html` üzerinden parametreleri (açı, hedef, rüzgar) girerek tarayıcı içindeki fizik motoruyla anlık hesaplama.
-2. **Yüksek Hassasiyetli Mod:** C++ motorunu derleyip çalıştırarak elde edilen telemetri verilerinin Python üzerinden dashboard'a aktarılması.
+1. `index.html` dosyasını tarayıcıda açarak gerçek zamanlı simülasyonu başlatabilirsiniz.
+2. C++ motorunu derleyerek yüksek hassasiyetli telemetri verileri üretebilirsiniz.
 
 ---
-*Bu çalışma, balistik sistemler ve uçuş kontrol algoritmaları üzerine yürütülen bireysel bir Ar-Ge projesidir.*
+*Bireysel teknik araştırma ve geliştirme projesidir.*
